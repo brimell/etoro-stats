@@ -1,6 +1,30 @@
 import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 import styled from 'styled-components';
+import {
+  ComposedChart,
+  Line,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  BarChart,
+} from 'recharts';
+
+// Define additional interfaces for chart data
+interface DailyData {
+  date: string;
+  profit: number;
+  cumulativeProfit: number;
+}
+
+interface MonthlyData {
+  month: string;
+  profit: number;
+}
 
 interface Stats {
   totalTrades: number;
@@ -16,8 +40,11 @@ interface Stats {
   stdDev: number;
   averageDailyProfit: number;
   projectedAnnualIncome: number;
+  dailyData: DailyData[];
+  monthlyData: MonthlyData[];
 }
 
+// Styled components for layout
 const Container = styled.div`
   min-height: 100vh;
   background-color: #f3f4f6;
@@ -34,8 +61,9 @@ const Card = styled.div`
     0 4px 6px -2px rgba(0, 0, 0, 0.05);
   border-radius: 0.5rem;
   padding: 2rem;
-  max-width: 600px;
+  max-width: 800px;
   width: 100%;
+  margin-bottom: 2rem;
 `;
 
 const Title = styled.h1`
@@ -82,6 +110,10 @@ const FileInput = styled.input`
 
 const ErrorText = styled.p`
   color: #dc2626;
+`;
+
+const ChartContainer = styled.div`
+  margin-top: 2rem;
 `;
 
 const App: React.FC = () => {
@@ -182,6 +214,32 @@ const App: React.FC = () => {
         : 0;
     const projectedAnnualIncome = averageDailyProfit * 365;
 
+    // Compute daily chart data
+    const dailyData: DailyData[] = Object.keys(dailyProfitMap).map((dateStr) => ({
+      date: dateStr,
+      profit: dailyProfitMap[dateStr],
+      cumulativeProfit: 0, // will compute next
+    }));
+    // Sort by date (assuming format yyyy-mm-dd)
+    dailyData.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    let cumulative = 0;
+    dailyData.forEach((item) => {
+      cumulative += item.profit;
+      item.cumulativeProfit = cumulative;
+    });
+
+    // Compute monthly data by grouping daily data
+    const monthlyProfitMap: { [key: string]: number } = {};
+    dailyData.forEach((item) => {
+      const month = item.date.slice(0, 7); // yyyy-mm
+      monthlyProfitMap[month] = (monthlyProfitMap[month] || 0) + item.profit;
+    });
+    const monthlyData: MonthlyData[] = Object.keys(monthlyProfitMap).map((month) => ({
+      month,
+      profit: monthlyProfitMap[month],
+    }));
+    monthlyData.sort((a, b) => a.month.localeCompare(b.month));
+
     return {
       totalTrades,
       profitableTrades,
@@ -196,6 +254,8 @@ const App: React.FC = () => {
       stdDev,
       averageDailyProfit,
       projectedAnnualIncome,
+      dailyData,
+      monthlyData,
     };
   };
 
@@ -207,14 +267,24 @@ const App: React.FC = () => {
         <FileInput type="file" accept=".xlsx, .xls" onChange={handleFileUpload} />
         {error && <ErrorText>{error}</ErrorText>}
         {stats && (
-          <div>
+          <>
             <Subtitle>Trading Statistics</Subtitle>
             <List>
-              <ListItem><strong>Total trades:</strong> {stats.totalTrades}</ListItem>
-              <ListItem><strong>Profitable trades:</strong> {stats.profitableTrades}</ListItem>
-              <ListItem><strong>Losing trades:</strong> {stats.lossTrades}</ListItem>
-              <ListItem><strong>Break-even trades:</strong> {stats.breakEvenTrades}</ListItem>
-              <ListItem><strong>Win rate:</strong> {stats.winRate.toFixed(2)}%</ListItem>
+              <ListItem>
+                <strong>Total trades:</strong> {stats.totalTrades}
+              </ListItem>
+              <ListItem>
+                <strong>Profitable trades:</strong> {stats.profitableTrades}
+              </ListItem>
+              <ListItem>
+                <strong>Losing trades:</strong> {stats.lossTrades}
+              </ListItem>
+              <ListItem>
+                <strong>Break-even trades:</strong> {stats.breakEvenTrades}
+              </ListItem>
+              <ListItem>
+                <strong>Win rate:</strong> {stats.winRate.toFixed(2)}%
+              </ListItem>
               <ListItem>
                 <strong>Total profit (USD):</strong> ${stats.totalProfit.toFixed(2)}
               </ListItem>
@@ -240,9 +310,47 @@ const App: React.FC = () => {
                 <strong>Projected yearly income (USD):</strong> ${stats.projectedAnnualIncome.toFixed(2)}
               </ListItem>
             </List>
-          </div>
+          </>
         )}
       </Card>
+
+      {stats && (
+        <Card>
+          <Subtitle>Interactive Graphs</Subtitle>
+          <ChartContainer>
+            <Paragraph>
+              <strong>Daily Profit & Cumulative Balance</strong>
+            </Paragraph>
+            <ResponsiveContainer width="100%" height={300}>
+              <ComposedChart data={stats.dailyData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="profit" barSize={20} fill="#413ea0" name="Daily Profit" />
+                <Line type="monotone" dataKey="cumulativeProfit" stroke="#ff7300" name="Cumulative Profit" />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </ChartContainer>
+
+          <ChartContainer>
+            <Paragraph>
+              <strong>Monthly Profit Breakdown</strong>
+            </Paragraph>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={stats.monthlyData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="profit" fill="#8884d8" name="Monthly Profit" />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartContainer>
+        </Card>
+      )}
     </Container>
   );
 };
