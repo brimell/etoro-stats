@@ -3,8 +3,8 @@ import * as XLSX from 'xlsx';
 import styled from 'styled-components';
 import {
   ComposedChart,
-  Line,
   Bar,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -12,18 +12,25 @@ import {
   Legend,
   ResponsiveContainer,
   BarChart,
+  Cell,
+  LineChart,
 } from 'recharts';
 
-// Define additional interfaces for chart data
+// Define interfaces for our chart data
 interface DailyData {
   date: string;
   profit: number;
   cumulativeProfit: number;
+  balance: number;
+  dailyPercentChange: number;
 }
 
 interface MonthlyData {
   month: string;
   profit: number;
+  cumulativeProfit: number;
+  balance: number;
+  monthlyPercentChange: number;
 }
 
 interface Stats {
@@ -116,6 +123,42 @@ const ChartContainer = styled.div`
   margin-top: 2rem;
 `;
 
+// Custom tooltip for daily chart
+const CustomDailyTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    return (
+      <div style={{ background: '#fff', border: '1px solid #ccc', padding: '10px' }}>
+        <p>{`Date: ${label}`}</p>
+        <p>
+          {`Daily Profit: ${data.profit.toFixed(2)} USD (${data.dailyPercentChange.toFixed(2)}%)`}
+        </p>
+        <p>{`Cumulative Profit: ${data.cumulativeProfit.toFixed(2)} USD`}</p>
+        <p>{`Balance: ${data.balance.toFixed(2)} USD`}</p>
+      </div>
+    );
+  }
+  return null;
+};
+
+// Custom tooltip for monthly chart
+const CustomMonthlyTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    return (
+      <div style={{ background: '#fff', border: '1px solid #ccc', padding: '10px' }}>
+        <p>{`Month: ${label}`}</p>
+        <p>
+          {`Monthly Profit: ${data.profit.toFixed(2)} USD (${data.monthlyPercentChange.toFixed(2)}%)`}
+        </p>
+        <p>{`Cumulative Profit: ${data.cumulativeProfit.toFixed(2)} USD`}</p>
+        <p>{`Balance: ${data.balance.toFixed(2)} USD`}</p>
+      </div>
+    );
+  }
+  return null;
+};
+
 const App: React.FC = () => {
   const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState<string>('');
@@ -207,6 +250,7 @@ const App: React.FC = () => {
         dailyProfitMap[dateStr] = (dailyProfitMap[dateStr] || 0) + Number(trade['Profit(USD)']);
       }
     });
+
     const dailyProfits = Object.values(dailyProfitMap);
     const averageDailyProfit =
       dailyProfits.length > 0
@@ -214,31 +258,58 @@ const App: React.FC = () => {
         : 0;
     const projectedAnnualIncome = averageDailyProfit * 365;
 
-    // Compute daily chart data
+    // Assume an initial balance for computing balance and % changes
+    const initialBalance = 10000;
+    let cumulative = 0;
+    let previousBalance = initialBalance;
     const dailyData: DailyData[] = Object.keys(dailyProfitMap).map((dateStr) => ({
       date: dateStr,
       profit: dailyProfitMap[dateStr],
-      cumulativeProfit: 0, // will compute next
+      cumulativeProfit: 0, // will update below
+      balance: 0,
+      dailyPercentChange: 0,
     }));
     // Sort by date (assuming format yyyy-mm-dd)
     dailyData.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    let cumulative = 0;
     dailyData.forEach((item) => {
       cumulative += item.profit;
       item.cumulativeProfit = cumulative;
+      item.balance = initialBalance + cumulative;
+      // Calculate daily percentage change relative to previous balance
+      item.dailyPercentChange = previousBalance !== 0 ? (item.profit / previousBalance) * 100 : 0;
+      previousBalance = item.balance;
     });
 
-    // Compute monthly data by grouping daily data
+    // Compute monthly data by grouping dailyData
     const monthlyProfitMap: { [key: string]: number } = {};
     dailyData.forEach((item) => {
       const month = item.date.slice(0, 7); // yyyy-mm
       monthlyProfitMap[month] = (monthlyProfitMap[month] || 0) + item.profit;
     });
-    const monthlyData: MonthlyData[] = Object.keys(monthlyProfitMap).map((month) => ({
-      month,
-      profit: monthlyProfitMap[month],
-    }));
-    monthlyData.sort((a, b) => a.month.localeCompare(b.month));
+    // Create an array of months with profit
+    const monthlyDataArray: { month: string; profit: number }[] = Object.keys(monthlyProfitMap).map(
+      (month) => ({
+        month,
+        profit: monthlyProfitMap[month],
+      })
+    );
+    monthlyDataArray.sort((a, b) => a.month.localeCompare(b.month));
+    let monthlyCumulative = 0;
+    let prevMonthlyBalance = initialBalance;
+    const monthlyData: MonthlyData[] = [];
+    monthlyDataArray.forEach((item) => {
+      monthlyCumulative += item.profit;
+      const balance = initialBalance + monthlyCumulative;
+      const monthlyPercentChange = prevMonthlyBalance !== 0 ? (item.profit / prevMonthlyBalance) * 100 : 0;
+      monthlyData.push({
+        month: item.month,
+        profit: item.profit,
+        cumulativeProfit: monthlyCumulative,
+        balance,
+        monthlyPercentChange,
+      });
+      prevMonthlyBalance = balance;
+    });
 
     return {
       totalTrades,
@@ -270,21 +341,11 @@ const App: React.FC = () => {
           <>
             <Subtitle>Trading Statistics</Subtitle>
             <List>
-              <ListItem>
-                <strong>Total trades:</strong> {stats.totalTrades}
-              </ListItem>
-              <ListItem>
-                <strong>Profitable trades:</strong> {stats.profitableTrades}
-              </ListItem>
-              <ListItem>
-                <strong>Losing trades:</strong> {stats.lossTrades}
-              </ListItem>
-              <ListItem>
-                <strong>Break-even trades:</strong> {stats.breakEvenTrades}
-              </ListItem>
-              <ListItem>
-                <strong>Win rate:</strong> {stats.winRate.toFixed(2)}%
-              </ListItem>
+              <ListItem><strong>Total trades:</strong> {stats.totalTrades}</ListItem>
+              <ListItem><strong>Profitable trades:</strong> {stats.profitableTrades}</ListItem>
+              <ListItem><strong>Losing trades:</strong> {stats.lossTrades}</ListItem>
+              <ListItem><strong>Break-even trades:</strong> {stats.breakEvenTrades}</ListItem>
+              <ListItem><strong>Win rate:</strong> {stats.winRate.toFixed(2)}%</ListItem>
               <ListItem>
                 <strong>Total profit (USD):</strong> ${stats.totalProfit.toFixed(2)}
               </ListItem>
@@ -317,36 +378,64 @@ const App: React.FC = () => {
       {stats && (
         <Card>
           <Subtitle>Interactive Graphs</Subtitle>
+
+          {/* Chart 1: Cumulative Profit (Daily) */}
           <ChartContainer>
-            <Paragraph>
-              <strong>Daily Profit & Cumulative Balance</strong>
-            </Paragraph>
+            <Paragraph><strong>Cumulative Profit</strong></Paragraph>
             <ResponsiveContainer width="100%" height={300}>
               <ComposedChart data={stats.dailyData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="date" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip />
+                <Tooltip content={<CustomDailyTooltip />} />
                 <Legend />
-                <Bar dataKey="profit" barSize={20} fill="#413ea0" name="Daily Profit" />
+                <Bar dataKey="profit" barSize={20} name="Daily Profit">
+                  {stats.dailyData.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={entry.profit >= 0 ? "#00c853" : "#d50000"}
+                    />
+                  ))}
+                </Bar>
                 <Line type="monotone" dataKey="cumulativeProfit" stroke="#ff7300" name="Cumulative Profit" />
               </ComposedChart>
             </ResponsiveContainer>
           </ChartContainer>
 
+          {/* Chart 2: Monthly Profit Breakdown */}
           <ChartContainer>
-            <Paragraph>
-              <strong>Monthly Profit Breakdown</strong>
-            </Paragraph>
+            <Paragraph><strong>Monthly Profit Breakdown</strong></Paragraph>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={stats.monthlyData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip />
+                <Tooltip content={<CustomMonthlyTooltip />} />
                 <Legend />
-                <Bar dataKey="profit" fill="#8884d8" name="Monthly Profit" />
+                <Bar dataKey="profit" name="Monthly Profit">
+                  {stats.monthlyData.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={entry.profit >= 0 ? "#00c853" : "#d50000"}
+                    />
+                  ))}
+                </Bar>
               </BarChart>
+            </ResponsiveContainer>
+          </ChartContainer>
+
+          {/* Chart 3: Account Balance Over Time */}
+          <ChartContainer>
+            <Paragraph><strong>Account Balance Over Time</strong></Paragraph>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={stats.dailyData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} />
+                <Tooltip content={<CustomDailyTooltip />} />
+                <Legend />
+                <Line type="monotone" dataKey="balance" stroke="#8884d8" name="Balance" />
+              </LineChart>
             </ResponsiveContainer>
           </ChartContainer>
         </Card>
