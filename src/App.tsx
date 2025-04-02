@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
+import styled from 'styled-components';
 
 interface Stats {
   totalTrades: number;
@@ -16,6 +17,72 @@ interface Stats {
   averageDailyProfit: number;
   projectedAnnualIncome: number;
 }
+
+const Container = styled.div`
+  min-height: 100vh;
+  background-color: #f3f4f6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem;
+  font-family: Arial, sans-serif;
+`;
+
+const Card = styled.div`
+  background-color: #ffffff;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  border-radius: 0.5rem;
+  padding: 2rem;
+  max-width: 600px;
+  width: 100%;
+`;
+
+const Title = styled.h1`
+  font-size: 2.5rem;
+  font-weight: bold;
+  margin-bottom: 1.5rem;
+  text-align: center;
+`;
+
+const Subtitle = styled.h2`
+  font-size: 1.75rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+`;
+
+const Paragraph = styled.p`
+  font-size: 1rem;
+  margin-bottom: 1rem;
+  color: #374151;
+`;
+
+const List = styled.ul`
+  list-style: none;
+  padding: 0;
+  margin: 0;
+`;
+
+const ListItem = styled.li`
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+  color: #374151;
+`;
+
+const FileInput = styled.input`
+  display: block;
+  width: 100%;
+  font-size: 0.875rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  padding: 0.5rem;
+  margin-bottom: 1rem;
+  color: #111827;
+`;
+
+const ErrorText = styled.p`
+  color: #dc2626;
+`;
 
 const App: React.FC = () => {
   const [stats, setStats] = useState<Stats | null>(null);
@@ -133,58 +200,50 @@ const App: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: '2rem', fontFamily: 'Arial, sans-serif' }}>
-      <h1>eToro Statement Analysis</h1>
-      <p>Please upload your Excel statement:</p>
-      <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} />
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-      {stats && (
-        <div style={{ marginTop: '2rem' }}>
-          <h2>Trading Statistics</h2>
-          <ul>
-            <li>
-              <strong>Total trades:</strong> {stats.totalTrades}
-            </li>
-            <li>
-              <strong>Profitable trades:</strong> {stats.profitableTrades}
-            </li>
-            <li>
-              <strong>Losing trades:</strong> {stats.lossTrades}
-            </li>
-            <li>
-              <strong>Break-even trades:</strong> {stats.breakEvenTrades}
-            </li>
-            <li>
-              <strong>Win rate:</strong> {stats.winRate.toFixed(2)}%
-            </li>
-            <li>
-              <strong>Total profit (USD):</strong> ${stats.totalProfit.toFixed(2)}
-            </li>
-            <li>
-              <strong>Maximum profit on single trade (USD):</strong> ${stats.maxProfit.toFixed(2)}
-            </li>
-            <li>
-              <strong>Maximum loss on single trade (USD):</strong> ${stats.minProfit.toFixed(2)}
-            </li>
-            <li>
-              <strong>Average profit per trade (USD):</strong> ${stats.avgProfit.toFixed(2)}
-            </li>
-            <li>
-              <strong>Median profit per trade (USD):</strong> ${stats.medianProfit.toFixed(2)}
-            </li>
-            <li>
-              <strong>Standard deviation of profit (USD):</strong> ${stats.stdDev.toFixed(2)}
-            </li>
-            <li>
-              <strong>Average daily profit (USD):</strong> ${stats.averageDailyProfit.toFixed(2)}
-            </li>
-            <li>
-              <strong>Projected yearly income (USD):</strong> ${stats.projectedAnnualIncome.toFixed(2)}
-            </li>
-          </ul>
-        </div>
-      )}
-    </div>
+    <Container>
+      <Title>eToro Statement Analysis</Title>
+      <Card>
+        <Paragraph>Please upload your Excel statement:</Paragraph>
+        <FileInput type="file" accept=".xlsx, .xls" onChange={handleFileUpload} />
+        {error && <ErrorText>{error}</ErrorText>}
+        {stats && (
+          <div>
+            <Subtitle>Trading Statistics</Subtitle>
+            <List>
+              <ListItem><strong>Total trades:</strong> {stats.totalTrades}</ListItem>
+              <ListItem><strong>Profitable trades:</strong> {stats.profitableTrades}</ListItem>
+              <ListItem><strong>Losing trades:</strong> {stats.lossTrades}</ListItem>
+              <ListItem><strong>Break-even trades:</strong> {stats.breakEvenTrades}</ListItem>
+              <ListItem><strong>Win rate:</strong> {stats.winRate.toFixed(2)}%</ListItem>
+              <ListItem>
+                <strong>Total profit (USD):</strong> ${stats.totalProfit.toFixed(2)}
+              </ListItem>
+              <ListItem>
+                <strong>Maximum profit on single trade (USD):</strong> ${stats.maxProfit.toFixed(2)}
+              </ListItem>
+              <ListItem>
+                <strong>Maximum loss on single trade (USD):</strong> ${stats.minProfit.toFixed(2)}
+              </ListItem>
+              <ListItem>
+                <strong>Average profit per trade (USD):</strong> ${stats.avgProfit.toFixed(2)}
+              </ListItem>
+              <ListItem>
+                <strong>Median profit per trade (USD):</strong> ${stats.medianProfit.toFixed(2)}
+              </ListItem>
+              <ListItem>
+                <strong>Standard deviation of profit (USD):</strong> ${stats.stdDev.toFixed(2)}
+              </ListItem>
+              <ListItem>
+                <strong>Average daily profit (USD):</strong> ${stats.averageDailyProfit.toFixed(2)}
+              </ListItem>
+              <ListItem>
+                <strong>Projected yearly income (USD):</strong> ${stats.projectedAnnualIncome.toFixed(2)}
+              </ListItem>
+            </List>
+          </div>
+        )}
+      </Card>
+    </Container>
   );
 };
 
