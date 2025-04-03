@@ -33,6 +33,11 @@ interface MonthlyData {
   monthlyPercentChange: number;
 }
 
+interface RealizedEquityData {
+  date: string;
+  realizedEquity: number;
+}
+
 interface Stats {
   totalTrades: number;
   profitableTrades: number;
@@ -49,6 +54,7 @@ interface Stats {
   projectedAnnualIncome: number;
   dailyData: DailyData[];
   monthlyData: MonthlyData[];
+  realizedEquityData: RealizedEquityData[];
 }
 
 // Styled components for layout
@@ -123,7 +129,17 @@ const ChartContainer = styled.div`
   margin-top: 2rem;
 `;
 
-// Custom tooltip for daily chart
+// Helper function to reformat dates from dd/mm/yyyy (or with time) to yyyy-mm-dd
+const formatDate = (rawDate: string): string => {
+  const parts = rawDate.split(' ');
+  const dateParts = parts[0].split('/');
+  if (dateParts.length === 3) {
+    return `${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`;
+  }
+  return rawDate;
+};
+
+// Custom tooltip for daily chart (for trades data)
 const CustomDailyTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
@@ -141,7 +157,7 @@ const CustomDailyTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-// Custom tooltip for monthly chart
+// Custom tooltip for monthly chart (for trades data)
 const CustomMonthlyTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
@@ -153,6 +169,20 @@ const CustomMonthlyTooltip = ({ active, payload, label }: any) => {
         </p>
         <p>{`Cumulative Profit: ${data.cumulativeProfit.toFixed(2)} USD`}</p>
         <p>{`Balance: ${data.balance.toFixed(2)} USD`}</p>
+      </div>
+    );
+  }
+  return null;
+};
+
+// Custom tooltip for Realized Equity chart
+const CustomEquityTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    return (
+      <div style={{ background: '#fff', border: '1px solid #ccc', padding: '10px' }}>
+        <p>{`Date: ${label}`}</p>
+        <p>{`Realized Equity: ${data.realizedEquity.toFixed(2)} USD`}</p>
       </div>
     );
   }
@@ -182,21 +212,27 @@ const App: React.FC = () => {
             }
             const tradesData = XLSX.utils.sheet_to_json<any>(closedPositionsSheet, { defval: '' });
 
-            // Retrieve the initial balance from the "Account Activity" sheet
+            // Retrieve the Account Activity sheet for balance and realized equity data
             const accountActivitySheet = workbook.Sheets['Account Activity'];
             if (!accountActivitySheet) {
               setError(`Sheet "Account Activity" not found in the uploaded file.`);
               return;
             }
             const activityData = XLSX.utils.sheet_to_json<any>(accountActivitySheet, { defval: '' });
-            // Sort by date assuming a column named "Date" exists.
+            // Sort activity rows by Date (oldest first)
             const sortedActivity = activityData.sort(
               (a, b) => new Date(a.Date).getTime() - new Date(b.Date).getTime()
             );
-            // Use the Balance from the earliest activity row as the starting balance
+            // For initial balance (used for computing trades stats), use the Balance column of the earliest row.
             const initialBalance = sortedActivity[0]?.Balance ? Number(sortedActivity[0].Balance) : 0;
+            // Build realized equity data from the "Realized Equity" column.
+            const realizedEquityData: RealizedEquityData[] = sortedActivity.map((row: any) => ({
+              date: formatDate(row.Date),
+              realizedEquity: Number(row["Realized Equity"]) || 0,
+            }));
 
-            const computedStats = computeStats(tradesData, initialBalance);
+            // Compute trades-based stats using the initial balance and trades data
+            const computedStats = { ...computeStats(tradesData, initialBalance), realizedEquityData };
             setStats(computedStats);
             setError('');
           } catch (err) {
@@ -250,16 +286,12 @@ const App: React.FC = () => {
     validTrades.forEach((trade) => {
       let dateStr = '';
       if (trade['Close Date']) {
-        // Assume the date format is "dd/mm/yyyy hh:mm:ss"
         const parts = trade['Close Date'].toString().split(' ');
-        if (parts.length > 0) {
-          const dateParts = parts[0].split('/');
-          if (dateParts.length === 3) {
-            // Rearrange dd/mm/yyyy to yyyy-mm-dd
-            dateStr = `${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`;
-          } else {
-            dateStr = parts[0];
-          }
+        const dateParts = parts[0].split('/');
+        if (dateParts.length === 3) {
+          dateStr = `${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`;
+        } else {
+          dateStr = parts[0];
         }
       }
       if (dateStr) {
@@ -284,13 +316,11 @@ const App: React.FC = () => {
       balance: 0,
       dailyPercentChange: 0,
     }));
-    // Sort by date (assuming format yyyy-mm-dd)
     dailyData.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     dailyData.forEach((item) => {
       cumulative += item.profit;
       item.cumulativeProfit = cumulative;
       item.balance = initialBalance + cumulative;
-      // Calculate daily percentage change relative to previous balance
       item.dailyPercentChange = previousBalance !== 0 ? (item.profit / previousBalance) * 100 : 0;
       previousBalance = item.balance;
     });
@@ -298,7 +328,7 @@ const App: React.FC = () => {
     // Compute monthly data by grouping dailyData
     const monthlyProfitMap: { [key: string]: number } = {};
     dailyData.forEach((item) => {
-      const month = item.date.slice(0, 7); // yyyy-mm
+      const month = item.date.slice(0, 7);
       monthlyProfitMap[month] = (monthlyProfitMap[month] || 0) + item.profit;
     });
     const monthlyDataArray: { month: string; profit: number }[] = Object.keys(monthlyProfitMap).map(
@@ -341,6 +371,7 @@ const App: React.FC = () => {
       projectedAnnualIncome,
       dailyData,
       monthlyData,
+      realizedEquityData: [], // placeholder; will be merged later
     };
   };
 
@@ -393,9 +424,9 @@ const App: React.FC = () => {
         <Card>
           <Subtitle>Interactive Graphs</Subtitle>
 
-          {/* Chart 1: Cumulative Profit (Daily) */}
+          {/* Chart 1: Daily Profit */}
           <ChartContainer>
-            <Paragraph><strong>Cumulative Profit</strong></Paragraph>
+            <Paragraph><strong>Daily Profit</strong></Paragraph>
             <ResponsiveContainer width="100%" height={300}>
               <ComposedChart data={stats.dailyData}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -432,17 +463,17 @@ const App: React.FC = () => {
             </ResponsiveContainer>
           </ChartContainer>
 
-          {/* Chart 3: Account Balance Over Time */}
+          {/* Chart 3: Account Balance Over Time using Realized Equity */}
           <ChartContainer>
             <Paragraph><strong>Account Balance Over Time</strong></Paragraph>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={stats.dailyData}>
+              <LineChart data={stats.realizedEquityData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="date" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip content={<CustomDailyTooltip />} />
+                <Tooltip content={<CustomEquityTooltip />} />
                 <Legend />
-                <Line type="monotone" dataKey="balance" stroke="#8884d8" name="Balance" />
+                <Line type="monotone" dataKey="realizedEquity" stroke="#8884d8" name="Realized Equity" />
               </LineChart>
             </ResponsiveContainer>
           </ChartContainer>
