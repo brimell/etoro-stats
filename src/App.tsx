@@ -12,11 +12,11 @@ import {
   Legend,
   ResponsiveContainer,
   BarChart,
-  Cell,
   LineChart,
+  Cell,
 } from 'recharts';
 
-// Define interfaces for our chart data
+// Define interfaces for chart data
 interface DailyData {
   date: string;
   profit: number;
@@ -173,15 +173,30 @@ const App: React.FC = () => {
           try {
             // Read the Excel file as an array
             const workbook = XLSX.read(data, { type: 'array' });
-            const sheetName = 'Closed Positions';
-            if (!workbook.Sheets[sheetName]) {
-              setError(`Sheet "${sheetName}" not found in the uploaded file.`);
+
+            // Retrieve the "Closed Positions" sheet data for trades
+            const closedPositionsSheet = workbook.Sheets['Closed Positions'];
+            if (!closedPositionsSheet) {
+              setError(`Sheet "Closed Positions" not found in the uploaded file.`);
               return;
             }
-            const worksheet = workbook.Sheets[sheetName];
-            // Convert the worksheet data to JSON
-            const jsonData = XLSX.utils.sheet_to_json<any>(worksheet, { defval: '' });
-            const computedStats = computeStats(jsonData);
+            const tradesData = XLSX.utils.sheet_to_json<any>(closedPositionsSheet, { defval: '' });
+
+            // Retrieve the initial balance from the "Account Activity" sheet
+            const accountActivitySheet = workbook.Sheets['Account Activity'];
+            if (!accountActivitySheet) {
+              setError(`Sheet "Account Activity" not found in the uploaded file.`);
+              return;
+            }
+            const activityData = XLSX.utils.sheet_to_json<any>(accountActivitySheet, { defval: '' });
+            // Sort by date assuming a column named "Date" exists.
+            const sortedActivity = activityData.sort(
+              (a, b) => new Date(a.Date).getTime() - new Date(b.Date).getTime()
+            );
+            // Use the Balance from the earliest activity row as the starting balance
+            const initialBalance = sortedActivity[0]?.Balance ? Number(sortedActivity[0].Balance) : 0;
+
+            const computedStats = computeStats(tradesData, initialBalance);
             setStats(computedStats);
             setError('');
           } catch (err) {
@@ -193,7 +208,8 @@ const App: React.FC = () => {
     }
   };
 
-  const computeStats = (trades: any[]): Stats => {
+  // computeStats now accepts an initialBalance extracted from the Account Activity sheet
+  const computeStats = (trades: any[], initialBalance: number): Stats => {
     // Filter out trades with missing or invalid profit values.
     const validTrades = trades.filter(
       (trade) =>
@@ -258,8 +274,7 @@ const App: React.FC = () => {
         : 0;
     const projectedAnnualIncome = averageDailyProfit * 365;
 
-    // Assume an initial balance for computing balance and % changes
-    const initialBalance = 10000;
+    // Compute daily chart data using the extracted initial balance
     let cumulative = 0;
     let previousBalance = initialBalance;
     const dailyData: DailyData[] = Object.keys(dailyProfitMap).map((dateStr) => ({
@@ -286,7 +301,6 @@ const App: React.FC = () => {
       const month = item.date.slice(0, 7); // yyyy-mm
       monthlyProfitMap[month] = (monthlyProfitMap[month] || 0) + item.profit;
     });
-    // Create an array of months with profit
     const monthlyDataArray: { month: string; profit: number }[] = Object.keys(monthlyProfitMap).map(
       (month) => ({
         month,
@@ -391,10 +405,7 @@ const App: React.FC = () => {
                 <Legend />
                 <Bar dataKey="profit" barSize={20} name="Daily Profit">
                   {stats.dailyData.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={entry.profit >= 0 ? "#00c853" : "#d50000"}
-                    />
+                    <Cell key={`cell-${index}`} fill={entry.profit >= 0 ? "#00c853" : "#d50000"} />
                   ))}
                 </Bar>
                 <Line type="monotone" dataKey="cumulativeProfit" stroke="#ff7300" name="Cumulative Profit" />
@@ -414,10 +425,7 @@ const App: React.FC = () => {
                 <Legend />
                 <Bar dataKey="profit" name="Monthly Profit">
                   {stats.monthlyData.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={entry.profit >= 0 ? "#00c853" : "#d50000"}
-                    />
+                    <Cell key={`cell-${index}`} fill={entry.profit >= 0 ? "#00c853" : "#d50000"} />
                   ))}
                 </Bar>
               </BarChart>
